@@ -9,7 +9,8 @@ from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import config, messages as msg
 
-PDF_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "30_phrases.pdf")
+PDF_RU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "30_phrases.pdf")
+PDF_EN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "30_phrases_en.pdf")
 DB_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
 
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
@@ -159,15 +160,19 @@ async def handle_lang(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
     await asyncio.sleep(1)
+    pdf_path = PDF_EN if lang == "en" else PDF_RU
+    pdf_name = "BigCheese_30_phrases_EN.pdf" if lang == "en" else "BigCheese_30_фраз_RU.pdf"
+    caption_ru = "📄 Сохрани — пригодится.\n30 фраз для аренды, банка, врача и соседей.\n\n🇪🇸 Испанский · 🇮🇹 Итальянский · 🇬🇧 Английский"
+    caption_en = "📄 Save this — you'll need it.\n30 phrases for housing, bank, doctor & neighbours.\n\n🇪🇸 Spanish · 🇮🇹 Italian · 🇬🇧 English"
     try:
-        with open(PDF_PATH,"rb") as f:
+        with open(pdf_path,"rb") as f:
             await ctx.bot.send_document(
                 chat_id=uid, document=f,
-                filename="BigCheese_30_phrases.pdf",
-                caption="📄 30 phrases for housing, bank, doctor & neighbours.\n🇪🇸 Spanish · 🇮🇹 Italian · 🇬🇧 English"
+                filename=pdf_name,
+                caption=caption_en if lang=="en" else caption_ru
             )
     except FileNotFoundError:
-        log.warning("PDF not found")
+        log.warning("PDF not found: %s", pdf_path)
     await asyncio.sleep(1)
     await ctx.bot.send_message(uid, msg.DAY0_SEGMENT[lang],
                                reply_markup=kb_segment(lang), parse_mode="HTML")
