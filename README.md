@@ -1,84 +1,62 @@
-# Big Cheese Languages — Telegram Bot
+# Big Cheese Telegram Bot — TEST MODE package
 
-Clean Railway-ready package.
+This package is for fast QA testing of the 7-day funnel.
 
-## Files in repository root
+## Test schedule
 
-Upload ONLY these files to GitHub repository root:
+After user selects a segment:
 
-- `bot.py`
-- `config.py`
-- `messages.py`
-- `requirements.txt`
-- `Procfile`
-- `runtime.txt`
-- `30_phrases.pdf`
-- `30_phrases_en.pdf`
-- `README.md`
+- Day 2 message: after 2 minutes
+- Day 4 message: after 4 minutes
+- Day 6 offer + CTA: after 6 minutes
+- Day 7 follow-up: after 7 minutes, only if CTA was not clicked
 
-Do NOT upload:
+The scheduler checks the queue every 1 minute.
 
-- `users.db`
-- old `.zip` archives
-- duplicate `bot/` folder
-- Apps Script files
+## Railway Variables
 
-## Railway variables
+Set these in Railway → Variables:
 
-Add these variables in Railway → Service → Variables:
-
-```text
-BOT_TOKEN=your_new_token_from_BotFather
+```
+BOT_TOKEN=your_new_botfather_token
 ADMIN_CHAT_ID=292828575
-PDF_LINK=https://b1gcheese.ru/30_phrases.pdf
-BOOKING_LINK=https://b1gcheese.ru/#start
+TEST_MODE=1
+PDF_LINK=https://bigcheeses.org/30_phrases.pdf
+BOOKING_LINK=https://bigcheeses.org/#start
 ```
 
-Important: do not store the Telegram token inside `config.py` or README.
+Do not commit the real Telegram token to GitHub.
 
-## Railway settings
+## Start Command
 
-Use:
-
-```text
-Root Directory: empty
-Start Command: python bot.py
+```
+python bot.py
 ```
 
-`Procfile` also contains:
+Root Directory must be empty if these files are in the repository root.
 
-```text
-worker: python bot.py
+## Test flow
+
+1. Redeploy Railway.
+2. Open Telegram bot.
+3. Send `/start`.
+4. Choose RU or EN.
+5. Choose one segment: relocation / career / other.
+6. Wait 2, 4, 6, 7 minutes.
+7. Check that all scheduled messages arrive.
+
+## After test
+
+Set Railway variable:
+
+```
+TEST_MODE=0
 ```
 
-## Expected logs after deploy
+Then redeploy to return to production schedule:
 
-```text
-🤖 Bot v3 starting (RU/EN)...
-DB ready: /app/users.db
-✅ Scheduler started
-⏰ Tick | users:0 seg:0
+- Day 2: 48 hours
+- Day 4: 96 hours
+- Day 6: 144 hours
+- Day 7: 168 hours
 ```
-
-## Telegram test
-
-Open the bot and send:
-
-```text
-/start
-```
-
-Expected first response:
-
-```text
-Выбери язык / Choose language:
-```
-
-with buttons:
-
-- 🇷🇺 Русский
-- 🇬🇧 English
-
-## Notes
-
-The bot creates `users.db` automatically on Railway. Do not upload `users.db` to GitHub.

@@ -16,6 +16,20 @@ DB_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
 logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 
+# TEST MODE:
+# True = scheduled funnel messages go out in minutes for QA testing.
+# False = production schedule in hours/days.
+# Railway Variable: TEST_MODE=1 for test, TEST_MODE=0 for production.
+TEST_MODE = os.getenv("TEST_MODE", "1").lower() in ("1", "true", "yes", "on")
+SCHEDULE = {
+    "day2_sent": 2 if TEST_MODE else 48,
+    "day4_sent": 4 if TEST_MODE else 96,
+    "day6_sent": 6 if TEST_MODE else 144,
+    "day7_sent": 7 if TEST_MODE else 168,
+}
+SCHEDULE_UNIT = "minutes" if TEST_MODE else "hours"
+SCHEDULER_EVERY_MINUTES = 1 if TEST_MODE else 60
+
 # ── БД ────────────────────────────────────────────────────────────
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -76,7 +90,12 @@ def set_lang(uid, lang):
 def set_segment(uid, segment):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE users SET segment=? WHERE user_id=?", (segment, uid))
+    # Segment selection starts/restarts the nurture chain.
+    # This makes testing predictable and prevents old test data from blocking scheduled messages.
+    c.execute("""UPDATE users
+        SET segment=?, subscribed=CURRENT_TIMESTAMP,
+            day2_sent=0, day4_sent=0, day6_sent=0, day7_sent=0, clicked_cta=0
+        WHERE user_id=?""", (segment, uid))
     conn.commit(); conn.close()
 
 def mark_cta(uid):
@@ -92,12 +111,13 @@ def get_user(uid):
     row = c.fetchone(); conn.close()
     return row  # (lang, segment, subscribed, username, first_name, clicked_cta)
 
-def get_users_for_day(day_col, hours_min):
+def get_users_for_day(day_col, delay_value):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    modifier = f"+{delay_value} {SCHEDULE_UNIT}"
     c.execute(f"""SELECT user_id, lang, segment, clicked_cta FROM users
         WHERE {day_col}=0 AND segment IS NOT NULL
-        AND datetime(subscribed,'+{hours_min} hours') <= datetime('now')""")
+        AND datetime(subscribed, ?) <= datetime('now')""", (modifier,))
     rows = c.fetchall(); conn.close()
     return rows
 
@@ -278,13 +298,14 @@ async def send_scheduled(bot):
     total, seg = db_stats()
     log.info("⏰ Tick | users:%d seg:%d", total, seg)
 
-    for day_col, hours, get_content in [
-        ("day2_sent", 48,  lambda l,s,_: (msg.DAY2[l][s], kb_when(l) if s=="relocation" else kb_career(l) if s=="career" else kb_other(l))),
-        ("day4_sent", 96,  lambda l,s,_: (msg.DAY4[l][s], None)),
-        ("day6_sent", 144, lambda l,s,_: (msg.DAY6[l],    kb_cta(l))),
-        ("day7_sent", 168, lambda l,s,clicked: (None,None) if clicked else (msg.DAY7[l], kb_cta(l))),
+    for day_col, delay, get_content in [
+        ("day2_sent", SCHEDULE["day2_sent"], lambda l,s,_: (msg.DAY2[l][s], kb_when(l) if s=="relocation" else kb_career(l) if s=="career" else kb_other(l))),
+        ("day4_sent", SCHEDULE["day4_sent"], lambda l,s,_: (msg.DAY4[l][s], None)),
+        ("day6_sent", SCHEDULE["day6_sent"], lambda l,s,_: (msg.DAY6[l], kb_cta(l))),
+        ("day7_sent", SCHEDULE["day7_sent"], lambda l,s,clicked: (None,None) if clicked else (msg.DAY7[l], kb_cta(l))),
     ]:
-        users = get_users_for_day(day_col, hours)
+        users = get_users_for_day(day_col, delay)
+        log.info("%s delay: %s %s", day_col, delay, SCHEDULE_UNIT)
         log.info("%s queue: %d", day_col, len(users))
         for uid, lang, segment, clicked in users:
             if not segment: continue
@@ -314,14 +335,14 @@ def main():
     async def on_startup(application):
         scheduler.add_job(
             lambda: asyncio.ensure_future(send_scheduled(application.bot)),
-            "interval", hours=1, id="sender", replace_existing=True
+            "interval", minutes=SCHEDULER_EVERY_MINUTES, id="sender", replace_existing=True
         )
         scheduler.start()
         log.info("✅ Scheduler started")
         await send_scheduled(application.bot)
 
     app.post_init = on_startup
-    log.info("🤖 Bot v3 starting (RU/EN)...")
+    log.info("🤖 Bot v3 starting (RU/EN)... TEST_MODE=%s unit=%s schedule=%s", TEST_MODE, SCHEDULE_UNIT, SCHEDULE)
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
