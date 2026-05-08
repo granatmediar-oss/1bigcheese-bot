@@ -6,7 +6,6 @@ import logging, sqlite3, asyncio, os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                            MessageHandler, filters, ContextTypes)
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import config, messages as msg
 
 PDF_RU = os.path.join(os.path.dirname(os.path.abspath(__file__)), "30_phrases.pdf")
@@ -330,19 +329,15 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_cta,     pattern="^cta_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
-
-    async def scheduled_job():
-        await send_scheduled(app.bot)
+    async def scheduler_loop(application):
+        log.info("✅ Scheduler loop started")
+        await send_scheduled(application.bot)
+        while True:
+            await asyncio.sleep(SCHEDULER_EVERY_MINUTES * 60)
+            await send_scheduled(application.bot)
 
     async def on_startup(application):
-        scheduler.add_job(
-            scheduled_job,
-            "interval", minutes=SCHEDULER_EVERY_MINUTES, id="sender", replace_existing=True
-        )
-        scheduler.start()
-        log.info("✅ Scheduler started")
-        await send_scheduled(application.bot)
+        application.create_task(scheduler_loop(application))
 
     app.post_init = on_startup
     log.info("🤖 Bot v3 starting (RU/EN)... TEST_MODE=%s unit=%s schedule=%s", TEST_MODE, SCHEDULE_UNIT, SCHEDULE)
