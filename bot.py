@@ -332,9 +332,12 @@ def main():
 
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
 
+    async def scheduled_job():
+        await send_scheduled(app.bot)
+
     async def on_startup(application):
         scheduler.add_job(
-            lambda: asyncio.ensure_future(send_scheduled(application.bot)),
+            scheduled_job,
             "interval", minutes=SCHEDULER_EVERY_MINUTES, id="sender", replace_existing=True
         )
         scheduler.start()
